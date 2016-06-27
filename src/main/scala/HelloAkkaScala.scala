@@ -27,7 +27,6 @@ object HelloAkkaScala extends App {
 
   // Tell the 'greeter' to change its 'greeting' message
   greeter.tell(WhoToGreet("akka"), ActorRef.noSender)
-
   // Ask the 'greeter for the latest 'greeting'
   // Reply should go to the "actor-in-a-box"
   inbox.send(greeter, Greet)
