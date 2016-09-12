@@ -1,6 +1,5 @@
 import akka.actor.{ ActorRef, ActorSystem, Props, Actor, Inbox }
 import scala.concurrent.duration._
-import com.typesafe.cinnamon.akka.Tracer
 
 case object Greet
 case class WhoToGreet(who: String)
@@ -12,9 +11,7 @@ class Greeter extends Actor {
   def receive = {
     case WhoToGreet(who) => greeting = s"hello, $who"
     case Greet           =>
-      Tracer(context.system).start("myTraceName") {
-        sender ! Greeting(greeting) // Send the current greeting back to the sender
-      }
+      sender ! Greeting(greeting) // Send the current greeting back to the sender
   }
 }
 
@@ -56,6 +53,5 @@ class GreetPrinter extends Actor {
   def receive = {
     case Greeting(message) =>
       println(message)
-      Tracer(context.system).end("myTraceName")
   }
 }
