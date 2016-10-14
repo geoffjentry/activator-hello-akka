@@ -1,57 +1,90 @@
-import akka.actor.{ ActorRef, ActorSystem, Props, Actor, Inbox }
+import akka.actor.{Actor, ActorRef, ActorSystem, Inbox, Props}
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, Multipart}
+import akka.http.scaladsl.server.Directives._
+import akka.stream.ActorMaterializer
+import akka.util.Timeout
+import akka.pattern.ask
+import spray.json.DefaultJsonProtocol._
+import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
+import akka.http.scaladsl.model.Multipart.BodyPart
+
+import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.io.StdIn
 
 case object Greet
 case class WhoToGreet(who: String)
 case class Greeting(message: String)
+case class ColorAndAge(color: String, age: Int)
 
 class Greeter extends Actor {
   var greeting = ""
 
   def receive = {
-    case WhoToGreet(who) => greeting = s"hello, $who"
-    case Greet           =>
-      sender ! Greeting(greeting) // Send the current greeting back to the sender
+    case WhoToGreet(who) =>
+      println("Received $who")
+      sender ! Greeting(s"hello, $who")
   }
 }
 
-object HelloAkkaScala extends App {
+object HelloAkkaScala {
 
-  // Create the 'helloakka' actor system
-  val system = ActorSystem("helloakka")
+  def main(args: Array[String]) {
+    // Create the 'helloakka' actor system
+    implicit val system = ActorSystem("helloakka")
 
-  // Create the 'greeter' actor
-  val greeter = system.actorOf(Props[Greeter], "greeter")
+    // Create the 'greeter' actor
+    val greeter = system.actorOf(Props[Greeter], "greeter")
 
-  // Create an "actor-in-a-box"
-  val inbox = Inbox.create(system)
+    implicit val materializer = ActorMaterializer()
+    implicit val executionContext = system.dispatcher
 
-  // Tell the 'greeter' to change its 'greeting' message
-  greeter.tell(WhoToGreet("akka"), ActorRef.noSender)
-  // Ask the 'greeter for the latest 'greeting'
-  // Reply should go to the "actor-in-a-box"
-  inbox.send(greeter, Greet)
+    implicit val askTimeout: Timeout = 3.seconds
 
-  // Wait 5 seconds for the reply with the 'greeting' message
-  val Greeting(message1) = inbox.receive(5.seconds)
-  println(s"Greeting: $message1")
+    implicit val GreetingFormat = jsonFormat1(Greeting)
 
-  // Change the greeting and ask for it again
-  greeter.tell(WhoToGreet("lightbend"), ActorRef.noSender)
-  inbox.send(greeter, Greet)
-  val Greeting(message2) = inbox.receive(5.seconds)
-  println(s"Greeting: $message2")
+    val blah = Map("hi" -> List("there", "foo"), "foo" -> List("bar", "huH"))
 
-  val greetPrinter = system.actorOf(Props[GreetPrinter])
-  // after zero seconds, send a Greet message every second to the greeter with a sender of the greetPrinter
-  system.scheduler.schedule(0.seconds, 1.second, greeter, Greet)(system.dispatcher, greetPrinter)
-  
-}
+    implicit val ColorAndAgeFormat = jsonFormat2(ColorAndAge)
 
-// prints a greeting
-class GreetPrinter extends Actor {
-  def receive = {
-    case Greeting(message) =>
-      println(message)
+    val route =
+      path("hello") {
+        get {
+          complete(HttpEntity(ContentTypes.`text/html(UTF-8)`, "<h1>Say hello to akka-http</h1>"))
+        }
+      } ~
+      path("workflows" / Segment / "backends") { version =>
+        get {
+          val greeting: Future[Greeting] = greeter.ask(WhoToGreet("bob")).mapTo[Greeting]
+          complete(greeting)
+        }
+      } ~
+    path("workflows" / Segment / "foo") { version =>
+      complete(blah)
+    } ~
+    path("multipart") {
+      post {
+        entity(as[Multipart.FormData]) { shite =>
+          val allParts: Future[Map[String, Any]] = shite.parts.mapAsync[(String, Any)](1) {
+            case b: BodyPart => b.toStrict(5.seconds).map(strict => b.name -> strict.entity.data.utf8String)
+          }.runFold(Map.empty[String, Any])((map, tuple) => map + tuple)
+          onSuccess(allParts) { x =>
+            println(x)
+            complete { "hi" }
+          }
+        }
+      }
+    }
+
+    val bindingFuture = Http().bindAndHandle(route, "localhost", 8080)
+
+    while (true) {
+      // stupid way to block the main thread so bindingFuture doesn't complete
+      Thread.sleep(1000)
+    }
+    bindingFuture
+      .flatMap(_.unbind()) // trigger unbinding from the port
+      .onComplete(_ => system.terminate()) // and shutdown when done
   }
 }

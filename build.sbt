@@ -14,19 +14,12 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "2.2.6" % "test",
   "junit" % "junit" % "4.12" % "test",
   "com.novocode" % "junit-interface" % "0.11" % "test",
-  Cinnamon.library.cinnamonCHMetrics,
-  Cinnamon.library.cinnamonAkka,
-  "com.lightbend.cinnamon" %% "cinnamon-takipi" % "2.0.0"
+  "com.lightbend.cinnamon" %% "cinnamon-takipi" % "2.0.0",
+  "com.typesafe.akka" %% "akka-http-experimental" % "2.4.9",
+  "com.typesafe.akka" %% "akka-http-spray-json-experimental" % "2.4.9"
 )
 
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v")
-
-lazy val app = project in file(".") enablePlugins (Cinnamon)
-cinnamon in run := true
-cinnamon in test := true
-
-// Set the Monitoring Agent log level
-cinnamonLogLevel := "DEBUG"
 
 version := "0.0.1-SNAPSHOT"
 
